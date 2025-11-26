@@ -32,6 +32,7 @@ the order change mechanism correctly handles partial cancellations.
 import datetime
 from decimal import Decimal
 
+import pytest
 from django.test import TestCase
 from django.utils.timezone import now
 from django_scopes import scopes_disabled
@@ -161,11 +162,11 @@ class PartialCancelFreeOrderTest(TestCase):
             self.position2.refresh_from_db()
 
             # Assert that position1 is canceled
-            assert self.position1.canceled is True, \
+            assert self.position1.canceled, \
                 "Position 1 should be marked as canceled"
 
             # Assert that position2 is still active
-            assert self.position2.canceled is False, \
+            assert not self.position2.canceled, \
                 "Position 2 should remain active"
 
             # Assert the order still has one active position
@@ -207,7 +208,7 @@ class PartialCancelFreeOrderTest(TestCase):
 
             # Verify the correct position is canceled
             self.position2.refresh_from_db()
-            assert self.position2.canceled is True
+            assert self.position2.canceled
 
     def test_cancel_all_positions_raises_error(self):
         """
@@ -217,8 +218,6 @@ class PartialCancelFreeOrderTest(TestCase):
         of an order. If all positions need to be canceled, the order
         itself should be canceled instead.
         """
-        import pytest
-
         with scopes_disabled():
             ocm = OrderChangeManager(
                 order=self.order,
@@ -241,7 +240,7 @@ class PartialCancelFreeOrderTest(TestCase):
             # Verify positions were not actually canceled
             self.position1.refresh_from_db()
             self.position2.refresh_from_db()
-            assert self.position1.canceled is False, \
+            assert not self.position1.canceled, \
                 "Position 1 should not be canceled after failed commit"
-            assert self.position2.canceled is False, \
+            assert not self.position2.canceled, \
                 "Position 2 should not be canceled after failed commit"
