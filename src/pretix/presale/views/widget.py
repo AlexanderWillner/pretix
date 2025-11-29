@@ -48,9 +48,7 @@ from django.views import View
 from django.views.decorators.cache import cache_page
 from django.views.decorators.gzip import gzip_page
 from django.views.decorators.http import condition
-from django.views.i18n import (
-    JavaScriptCatalog, get_formats, js_catalog_template,
-)
+from django.views.i18n import JavaScriptCatalog, builtin_template_path, get_formats
 from lxml import html
 
 from pretix.base.context import get_powered_by
@@ -168,7 +166,9 @@ def generate_widget_js(version, lang):
             'September', 'October', 'November', 'December'
         )
         catalog = dict((k, v) for k, v in catalog.items() if k.startswith('widget\u0004') or k in str_wl)
-        template = Engine().from_string(js_catalog_template)
+        template = Engine().from_string(
+            builtin_template_path("i18n_catalog.js").read_text(encoding="utf-8")
+        )
         context = Context({
             'catalog_str': indent(json.dumps(
                 catalog, sort_keys=True, indent=2)) if catalog else None,

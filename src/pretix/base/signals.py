@@ -60,28 +60,29 @@ def _populate_app_cache():
 
 def get_defining_app(o):
     # If sentry packed this in a wrapper, unpack that
-    if "sentry" in o.__module__:
+    module_name = getattr(o, "__module__", None)
+    if module_name and "sentry" in module_name:
         o = o.__wrapped__
 
     if hasattr(o, "__mocked_app"):
         return o.__mocked_app
 
     # Find the Django application this belongs to
-    searchpath = o.__module__
+    searchpath = module_name or getattr(o.__class__, "__module__", None) or ""
 
     # Core modules are always active
-    if any(searchpath.startswith(cm) for cm in settings.CORE_MODULES):
+    if searchpath and any(searchpath.startswith(cm) for cm in settings.CORE_MODULES):
         return 'CORE'
 
     if not app_cache:
         _populate_app_cache()
 
-    while True:
+    while searchpath:
         app = app_cache.get(searchpath)
         if "." not in searchpath or app:
             break
         searchpath, _ = searchpath.rsplit(".", 1)
-    return app
+    return app if searchpath else None
 
 
 def is_app_active(sender, app, allow_legacy_plugins=False):
@@ -216,12 +217,22 @@ class PluginSignal(Generic[T], django.dispatch.Signal):
 
     def _sorted_receivers(self, sender):
         orig_list = self._live_receivers(sender)
+        def _receiver_module(receiver):
+            if hasattr(receiver, "__module__"):
+                return receiver.__module__
+            # Some receivers (e.g. functools.partial or list wrappers) might not
+            # carry __module__; fall back to their class' module to keep sorting stable.
+            return receiver.__class__.__module__
+
+        def _receiver_name(receiver):
+            return getattr(receiver, "__name__", receiver.__class__.__name__)
+
         sorted_list = sorted(
             orig_list,
             key=lambda receiver: (
-                0 if any(receiver.__module__.startswith(m) for m in settings.CORE_MODULES) else 1,
-                receiver.__module__,
-                receiver.__name__,
+                0 if any(_receiver_module(receiver).startswith(m) for m in settings.CORE_MODULES) else 1,
+                _receiver_module(receiver),
+                _receiver_name(receiver),
             )
         )
         return sorted_list
