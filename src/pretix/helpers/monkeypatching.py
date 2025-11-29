@@ -20,6 +20,7 @@
 # <https://www.gnu.org/licenses/>.
 #
 import types
+import sys
 from datetime import datetime
 from http import cookies
 
@@ -95,8 +96,44 @@ def monkeypatch_cookie_morsel():
     cookies.Morsel._reserved.setdefault("partitioned", "Partitioned")
 
 
+def monkeypatch_django_context_copy():
+    """
+    Django's BaseContext/RenderContext __copy__ implementations rely on copy.copy(super()),
+    which started failing on Python 3.14 ("super" has no __dict__). Work around this by
+    rebuilding the copy manually, preserving the dict stack and common attributes.
+    """
+    if sys.version_info < (3, 14):
+        return
+
+    from copy import copy
+    from django.template import context as django_context
+
+    def _copy_basecontext(self):
+        dup = self.__class__()
+        dup.dicts = self.dicts[:]
+        for attr in ("use_l10n", "use_tz", "autoescape", "render_context", "template"):
+            if hasattr(self, attr):
+                setattr(dup, attr, getattr(self, attr))
+        return dup
+
+    def _copy_rendercontext(self):
+        dup = self.__class__()
+        dup.dicts = self.dicts[:]
+        return dup
+
+    def _copy_context(self):
+        dup = _copy_basecontext(self)
+        dup.render_context = copy(self.render_context)
+        return dup
+
+    django_context.BaseContext.__copy__ = _copy_basecontext
+    django_context.RenderContext.__copy__ = _copy_rendercontext
+    django_context.Context.__copy__ = _copy_context
+
+
 def monkeypatch_all_at_ready():
     monkeypatch_vobject_performance()
     monkeypatch_pillow_safer()
     monkeypatch_requests_timeout()
     monkeypatch_cookie_morsel()
+    monkeypatch_django_context_copy()
